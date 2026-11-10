@@ -1,0 +1,12 @@
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+build/
+dist/
+dist_console/
+build_console/
+*.egg-info/
+.idea/
+.vscode/
+*.tmp
