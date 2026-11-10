@@ -85,3 +85,42 @@ def test_gui_smoke(tmp_path):
     assert ctl.console.universes[0].snapshot()[:3] == bytes(3)
     ctl.dirty = False
     win.close()
+
+
+def test_panels_detach_and_reattach(tmp_path):
+    from PySide6.QtWidgets import QLabel
+    from youstrow.app import build_app
+    from youstrow.ui.panels import PanelHost, all_screens, screen_label
+    build_app([])
+    w = QLabel("contenu")
+    host = PanelHost("Test", w); host.show()
+    assert not host.is_detached and w.parent() is host
+    host.detach(all_screens()[0], fullscreen=False)
+    assert host.is_detached and w.window() is host.window_ and host.window_.isVisible()
+    host.attach()
+    assert not host.is_detached and w.parent() is host and w.isVisible()
+    assert all_screens() and "Écran 1" in screen_label(0, all_screens()[0])
+    host.close()
+
+
+def test_memory_rec_through_controller_and_ext_surface(tmp_path):
+    from youstrow.app import build_app
+    from youstrow.controller import AppController
+    from youstrow.ui.ext_surface import ExtSurface, specs_for
+    build_app([])
+    ctl = AppController(Settings(tmp_path / "s.json"))
+    d = search_library("generique rgb")[0]
+    for f in ctl.console.patch.add_many(d, d.modes[0], 2, 0, 1): f.group = 1
+    ctl.console.set_color((9, 8, 7)); ctl.toggle_rec(); assert ctl.recording
+    ctl.pad_press(5, 0); assert not ctl.recording and ctl.bank.get(0, 5, 0).states      # REC puis pad = enregistrer
+    ctl.pad_press(1, 0); ctl.console.render(); assert ctl.console.universes[0].snapshot()[:3] == bytes([255, 24, 24])
+    ctl.pad_press(5, 0); ctl.console.render(); assert ctl.console.universes[0].snapshot()[:3] == bytes([9, 8, 7])   # exclusivité : la colonne bascule
+    # surface EXT : ajouter des blocs, les déclencher, sauvegarder dans le show
+    ext = ExtSurface(ctl)
+    for spec in specs_for(ctl, "Couleurs")[:2] + specs_for(ctl, "Faders")[:1]:
+        assert ext.canvas.add(dict(spec))
+    assert len(ctl.ext_layout) == 3 and len({(b["gx"], b["gy"]) for b in ctl.ext_layout}) == 3     # pas de chevauchement
+    ext.set_edit(False)
+    ext.canvas.blocks[1].fire(); ctl.console.render(); assert ctl.console.universes[0].snapshot()[:3] == bytes([255, 24, 24])
+    ctl.save_show(str(tmp_path / "e.ysshow")); ctl.new_show(); ctl.open_show(str(tmp_path / "e.ysshow"))
+    assert len(ctl.ext_layout) == 3 and ctl.bank.get(0, 5, 0) is not None

@@ -9,6 +9,7 @@ from PySide6.QtCore import QObject, QTimer, Signal
 from .engine.console import Console, Engine, FixtureState
 from .engine import midi as midi_mod
 from .engine.effects import Effect, builtin_effects
+from .engine.memories import COLS, ROWS, MemoryBank
 from .engine.ftdi import FtdiError, d2xx_available, find_index, list_devices
 from .engine.outputs import ArtNetOutput, DmxOutput, EnttecProOutput, OpenDmxOutput
 from .engine.outputs.serial_vcp import SerialBackend
@@ -50,6 +51,7 @@ class AppController(QObject):
     midiActivity = Signal(str)        # dernier message, lisible
     actionTriggered = Signal(str, float)
     playlistChanged = Signal()
+    memoriesChanged = Signal()
 
     def __init__(self, settings: Settings | None = None):
         super().__init__()
@@ -62,6 +64,10 @@ class AppController(QObject):
         self.dirty = False
         self.fx_speed = 1.0
         self.playlist: list[dict] = []
+        self.bank = MemoryBank(); self.bank.load_defaults()
+        self.page = 0
+        self.recording = False
+        self.ext_layout: list[dict] = []
         self.learn_action: str | None = None
         self.midi = midi_mod.MidiEngine(self.midiMessage.emit)
         self.midiMessage.connect(self.handle_midi)
@@ -146,15 +152,17 @@ class AppController(QObject):
         self.console.clear_all()
         self.console.patch.fixtures.clear()
         self.playlist = []
+        self.bank = MemoryBank(); self.bank.load_defaults(); self.page = 0; self.recording = False; self.ext_layout = []
         self.show_path, self.dirty = "", False
-        self.playlistChanged.emit()
+        self.playlistChanged.emit(); self.memoriesChanged.emit()
         self.patchChanged.emit(); self.stateChanged.emit(); self.showChanged.emit("")
 
     def save_show(self, path: str | None = None) -> None:
         path = path or self.show_path
         if not path:
             raise ValueError("aucun chemin de show")
-        save_show(path, self.console.patch, self.console.states, self.effects, {"playlist": self.playlist})
+        save_show(path, self.console.patch, self.console.states, self.effects,
+                  {"playlist": self.playlist, "memories": self.bank.to_dict(), "ext": self.ext_layout})
         self.show_path, self.dirty = path, False
         self.settings.add_recent(path); self.settings.save()
         self.log("ok", f"Show enregistré : {Path(path).name}")
@@ -171,10 +179,16 @@ class AppController(QObject):
         if d.get("effects"):
             self.effects = [Effect.from_dict(e) for e in d["effects"]]
         self.playlist = [x for x in d.get("playlist", []) if isinstance(x, dict) and x.get("path")]
+        if d.get("memories"):
+            self.bank = MemoryBank.from_dict(d["memories"])
+        else:
+            self.bank = MemoryBank(); self.bank.load_defaults()
+        self.ext_layout = [b for b in d.get("ext", []) if isinstance(b, dict)]
+        self.page = 0; self.recording = False
         self.show_path, self.dirty = path, False
         self.settings.add_recent(path)
         self.log("ok", f"Show ouvert : {Path(path).name} ({len(patch.fixtures)} appareils)")
-        self.patchChanged.emit(); self.stateChanged.emit(); self.playlistChanged.emit(); self.showChanged.emit(path)
+        self.patchChanged.emit(); self.stateChanged.emit(); self.playlistChanged.emit(); self.memoriesChanged.emit(); self.showChanged.emit(path)
 
     def set_fx_speed(self, speed: float) -> None:
         """Vitesse globale des effets (multiplicateur), appliquée aux effets en cours."""
@@ -234,6 +248,38 @@ class AppController(QObject):
             return
         for action, value in midi_mod.resolve(self.bindings, msg):
             self.actionTriggered.emit(action, value)
+
+    # ------------------------------------------------------------- mémoires / pads
+    def effects_by_name(self) -> dict:
+        return {e.name: e for e in self.effects}
+
+    def pad_press(self, row: int, col: int) -> None:
+        if self.recording:
+            m = self.bank.store(self.page, row, col, self.console)
+            self.recording = False
+            self.log("ok", f"Mémoire {m.name} enregistrée ({len(m.fixture_ids)} appareil(s), {len(m.effects)} effet(s))")
+        elif not self.bank.recall(self.page, row, col, self.console, self.effects_by_name()):
+            self.log("info", "Pad vide : activez REC puis cliquez le pad pour y enregistrer l'état courant.")
+        self.touch(); self.memoriesChanged.emit()
+
+    def pad_clear(self, row: int, col: int) -> None:
+        if self.bank.get(self.page, row, col):
+            self.bank.clear(self.page, row, col, self.console)
+            self.log("info", "Mémoire effacée."); self.touch(); self.memoriesChanged.emit()
+
+    def row_press(self, row: int) -> None:
+        for c in range(COLS):
+            if self.bank.get(self.page, row, c) and self.bank.active_row(self.page, c) != row:
+                self.bank.recall(self.page, row, c, self.console, self.effects_by_name())
+        self.touch(); self.memoriesChanged.emit()
+
+    def toggle_rec(self) -> None:
+        self.recording = not self.recording
+        self.log("warn" if self.recording else "info", "REC : cliquez un pad pour y enregistrer l'état courant." if self.recording else "REC annulé.")
+        self.memoriesChanged.emit()
+
+    def set_page(self, page: int) -> None:
+        self.page = min(max(page, 0), self.bank.pages - 1); self.memoriesChanged.emit()
 
     def touch(self) -> None:
         self.dirty = True

@@ -13,7 +13,7 @@ Python 3.12 + PySide6 (Qt 6). Le moteur DMX est indépendant de l'interface.
 Téléchargez `YouStrow-Setup-x.y.z.exe` depuis les [Releases](../../releases) et lancez-le (pas besoin d'être administrateur).
 Les réglages sont dans `%APPDATA%\YouStrow\` et conservés à la désinstallation.
 
-## Fonctions
+## Fonctions (voir aussi docs/FEATURES.md et docs/FIGMA.md)
 - **Sorties DMX** : ENTTEC Open DMX USB (pilote D2XX, ou port COM pour les clones), ENTTEC DMX USB PRO, Art-Net (avec recherche de nodes). Assistant de connexion + diagnostic, test 100 %.
 - **Patch** : 4 univers, ~1800 appareils (bibliothèque QLC+), anti-chevauchement, groupes, inversion Pan/Tilt.
 - **Rig** : affectation des appareils aux 8 sorties d'un **splitter Showtec DB-1-8** (fiche de câblage, limite 32 appareils/ligne) et à un **pied Stairville BLS-315 Pro** (hauteur 150–310 cm). Ces deux matériels sont passifs : ils sont documentés et contrôlés, pas pilotés.

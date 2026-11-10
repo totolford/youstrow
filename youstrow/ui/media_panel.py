@@ -4,13 +4,16 @@ from __future__ import annotations
 from pathlib import Path
 
 from PySide6.QtCore import QTimer, QUrl, Qt, Signal
+from PySide6.QtGui import QGuiApplication, QKeySequence, QShortcut
 from PySide6.QtMultimedia import QAudioOutput, QMediaPlayer
 from PySide6.QtMultimediaWidgets import QVideoWidget
-from PySide6.QtWidgets import (QAbstractItemView, QComboBox, QFileDialog, QHBoxLayout, QHeaderView, QLabel, QPushButton,
-                               QSlider, QSpinBox, QTableWidget, QTableWidgetItem, QVBoxLayout, QWidget)
+from PySide6.QtWidgets import (QAbstractItemView, QCheckBox, QComboBox, QFileDialog, QFrame, QHBoxLayout, QHeaderView, QLabel,
+                               QPushButton, QSlider, QSpinBox, QTableWidget, QTableWidgetItem, QVBoxLayout, QWidget)
 
 from ..controller import AppController
 from . import theme as T
+from .icons import icon
+from .panels import all_screens, place_on_screen, screen_by_index, screen_label
 from .widgets import GradientSlider
 
 AUDIO_EXT = {".mp3", ".wav", ".flac", ".ogg", ".oga", ".m4a", ".aac", ".wma", ".opus"}
@@ -24,23 +27,37 @@ def fmt_ms(ms: int) -> str:
     return f"{s // 60}:{s % 60:02d}"
 
 
-class VideoWindow(QWidget):
+class VideoOutput(QWidget):
+    """Fenêtre de sortie vidéo : en fenêtre ou en plein écran, sur l'écran choisi. Échap ou F11 : retour."""
     closed = Signal()
 
-    def __init__(self):
-        super().__init__()
-        self.setWindowTitle("YouStrow — Vidéo")
-        self.resize(960, 540)
+    def __init__(self, video: QWidget, on_top: bool = False, hide_cursor: bool = True):
+        flags = Qt.Window | (Qt.WindowStaysOnTopHint if on_top else Qt.Widget)
+        super().__init__(None, flags)
+        self.setWindowTitle("YouStrow — Sortie vidéo")
         self.setStyleSheet("background:#000")
+        lay = QVBoxLayout(self); lay.setContentsMargins(0, 0, 0, 0); lay.addWidget(video)
+        self.video = video
+        if hide_cursor:
+            self.setCursor(Qt.BlankCursor); video.setCursor(Qt.BlankCursor)
+        QShortcut(QKeySequence("F11"), self, activated=lambda: self.showNormal() if self.isFullScreen() else self.showFullScreen())
+        QShortcut(QKeySequence("Esc"), self, activated=self.close)
 
     def closeEvent(self, e):
-        self.closed.emit(); super().closeEvent(e)
+        self.closed.emit()
+        super().closeEvent(e)
 
-    def keyPressEvent(self, e):
-        if e.key() == Qt.Key_Escape and self.isFullScreen():
-            self.showNormal()
-        elif e.key() == Qt.Key_F11:
-            self.showNormal() if self.isFullScreen() else self.showFullScreen()
+
+class _ScreenCard(QPushButton):
+    def __init__(self, idx, screen):
+        super().__init__()
+        self.idx = idx
+        self.setCheckable(True); self.setCursor(Qt.PointingHandCursor); self.setMinimumHeight(86)
+        g = screen.geometry()
+        self.setIcon(icon("monitor", T.TEXT2, 22)); self.setIconSize(__import__("PySide6.QtCore", fromlist=["QSize"]).QSize(22, 22))
+        self.setText(f" Écran {idx + 1}\n {g.width()}×{g.height()}" + (" · principal" if screen == QGuiApplication.primaryScreen() else ""))
+        self.setStyleSheet(f"QPushButton{{text-align:left;padding:12px 16px;border-radius:12px;background:{T.RAISED};border:1px solid {T.BORDER};}}"
+                           f"QPushButton:checked{{background:{T.ACCENT_DIM};border:2px solid {T.ACCENT};color:{T.ACCENT};}}")
 
 
 class MediaPanel(QWidget):
@@ -50,7 +67,6 @@ class MediaPanel(QWidget):
         self.current = -1
         self._light_effect: str | None = None
         self._seeking = False
-        self._detached: VideoWindow | None = None
         self.setAcceptDrops(True)
 
         self.audio = QAudioOutput(self); self.player = QMediaPlayer(self); self.player.setAudioOutput(self.audio)
@@ -58,12 +74,20 @@ class MediaPanel(QWidget):
         self.probe = QMediaPlayer(self); self._probe_queue: list[str] = []; self._probe_path = ""
         self._probe_timer = QTimer(self); self._probe_timer.setSingleShot(True); self._probe_timer.setInterval(3000)
 
-        lay = QVBoxLayout(self); lay.setContentsMargins(14, 14, 14, 14); lay.setSpacing(8)
+        v = ctl.settings.data.setdefault("video", {})
+        for k, dflt in (("screen", 1 if len(all_screens()) > 1 else 0), ("auto", False), ("on_top", True), ("hide_cursor", True)):
+            v.setdefault(k, dflt)
+        self.out_win: VideoOutput | None = None
+        root = QHBoxLayout(self); root.setContentsMargins(0, 0, 0, 0); root.setSpacing(16)
+        # ---- colonne gauche : playlist + transport
+        left = QFrame(); left.setObjectName("card"); lay = QVBoxLayout(left); lay.setContentsMargins(16, 14, 16, 14); lay.setSpacing(10)
+        left.setMinimumWidth(520); left.setMaximumWidth(820)
         top = QHBoxLayout(); t = QLabel("PLAYLIST AUDIO / VIDÉO"); t.setObjectName("section"); top.addWidget(t); top.addStretch(1)
-        self.add_btn = QPushButton("＋ Ajouter"); self.rm_btn = QPushButton("Retirer"); self.up_btn = QPushButton("▲"); self.dn_btn = QPushButton("▼")
-        for b in (self.add_btn, self.rm_btn, self.up_btn, self.dn_btn): top.addWidget(b)
+        self.add_btn = QPushButton(icon("plus", T.BG, 16), " Ajouter"); self.add_btn.setObjectName("primary")
+        self.rm_btn = QPushButton("Retirer"); self.rm_btn.setObjectName("ghost")
+        self.up_btn = QPushButton("▲"); self.dn_btn = QPushButton("▼")
+        for b_ in (self.add_btn, self.rm_btn, self.up_btn, self.dn_btn): top.addWidget(b_)
         lay.addLayout(top)
-
         self.table = QTableWidget(0, 5); self.table.setHorizontalHeaderLabels(["", "Titre", "Durée", "Vol %", "Lumière"])
         self.table.setSelectionBehavior(QAbstractItemView.SelectRows); self.table.setSelectionMode(QAbstractItemView.SingleSelection)
         self.table.verticalHeader().setVisible(False); self.table.setAlternatingRowColors(True)
@@ -71,28 +95,51 @@ class MediaPanel(QWidget):
         h = self.table.horizontalHeader(); h.setSectionResizeMode(QHeaderView.ResizeToContents); h.setSectionResizeMode(1, QHeaderView.Stretch)
         lay.addWidget(self.table, 1)
         self.hint = QLabel("Glissez des fichiers audio/vidéo ici, ou « Ajouter ». Double-clic pour lire."); self.hint.setObjectName("muted"); lay.addWidget(self.hint)
-
-        vrow = QHBoxLayout(); vt = QLabel("VIDÉO"); vt.setObjectName("section"); vrow.addWidget(vt); vrow.addStretch(1)
-        self.detach_btn = QPushButton("Fenêtre vidéo"); self.detach_btn.setCheckable(True); self.detach_btn.setToolTip("Détacher la vidéo (F11 = plein écran dans cette fenêtre)")
-        vrow.addWidget(self.detach_btn); lay.addLayout(vrow)
-        self.vholder = QVBoxLayout(); self.vholder.addWidget(self.video); lay.addLayout(self.vholder)
-
-        seek = QHBoxLayout()
-        self.pos_lbl = QLabel("0:00"); self.dur_lbl = QLabel("0:00")
+        tp = QFrame(); tp.setStyleSheet(f"QFrame{{background:{T.RAISED};border:1px solid {T.BORDER};border-radius:12px;}} QLabel{{border:none;}}")
+        tl = QVBoxLayout(tp); tl.setContentsMargins(14, 12, 14, 12); tl.setSpacing(10)
+        seek = QHBoxLayout(); self.pos_lbl = QLabel("0:00"); self.pos_lbl.setStyleSheet(f"color:{T.ACCENT};font-weight:600;"); self.dur_lbl = QLabel("0:00"); self.dur_lbl.setObjectName("muted")
         self.seek = GradientSlider([(0, T.ACCENT), (1, T.ACCENT)]); seek.addWidget(self.pos_lbl); seek.addWidget(self.seek, 1); seek.addWidget(self.dur_lbl)
-        lay.addLayout(seek)
+        tl.addLayout(seek)
         ctl_row = QHBoxLayout(); ctl_row.setSpacing(8)
-        self.prev_btn, self.play_btn, self.stop_btn, self.next_btn = QPushButton("⏮"), QPushButton("▶"), QPushButton("⏹"), QPushButton("⏭")
-        self.play_btn.setObjectName("primary"); self.play_btn.setFixedWidth(64)
-        for b in (self.prev_btn, self.play_btn, self.stop_btn, self.next_btn): ctl_row.addWidget(b)
+        self.prev_btn, self.play_btn, self.stop_btn, self.next_btn = (QPushButton(icon("prev", T.TEXT, 18), ""), QPushButton(icon("play", T.BG, 18), ""),
+                                                                      QPushButton(icon("stop", T.TEXT, 18), ""), QPushButton(icon("next", T.TEXT, 18), ""))
+        self.play_btn.setObjectName("primary")
+        for b_ in (self.prev_btn, self.play_btn, self.stop_btn, self.next_btn): b_.setFixedSize(44, 38); ctl_row.addWidget(b_)
         ctl_row.addStretch(1)
         self.repeat = QComboBox(); self.repeat.addItems(["Pas de répétition", "Répéter la playlist", "Répéter la piste"]); ctl_row.addWidget(self.repeat)
-        ctl_row.addWidget(QLabel("Volume"))
-        self.vol = QSlider(Qt.Horizontal); self.vol.setRange(0, 100); self.vol.setValue(80); self.vol.setFixedWidth(120)
+        vl = QLabel("VOL"); vl.setObjectName("section"); ctl_row.addWidget(vl)
+        self.vol = QSlider(Qt.Horizontal); self.vol.setRange(0, 100); self.vol.setValue(80); self.vol.setFixedWidth(110)
         self.vol.setStyleSheet(f"QSlider::groove:horizontal{{height:6px;background:{T.RAISED_HI};border-radius:3px}}"
                                f"QSlider::sub-page:horizontal{{background:{T.ACCENT};border-radius:3px}}"
                                f"QSlider::handle:horizontal{{width:16px;height:16px;margin:-5px 0;border-radius:8px;background:#f5f7fa}}")
-        ctl_row.addWidget(self.vol); lay.addLayout(ctl_row)
+        ctl_row.addWidget(self.vol); tl.addLayout(ctl_row)
+        lay.addWidget(tp)
+        root.addWidget(left, 5)
+        # ---- colonne droite : aperçu vidéo + sortie vidéo
+        right = QVBoxLayout(); right.setSpacing(16)
+        vc = QFrame(); vc.setObjectName("card"); vl_ = QVBoxLayout(vc); vl_.setContentsMargins(16, 14, 16, 14); vl_.setSpacing(10)
+        vh = QHBoxLayout(); vt = QLabel("APERÇU VIDÉO"); vt.setObjectName("section"); vh.addWidget(vt); self.now = QLabel(""); self.now.setObjectName("muted"); vh.addWidget(self.now); vh.addStretch(1)
+        self.win_btn = QPushButton(icon("popout", T.TEXT, 16), " Fenêtre vidéo"); self.full_btn = QPushButton(icon("maximize", T.BG, 16), " Plein écran · F11"); self.full_btn.setObjectName("primary")
+        vh.addWidget(self.win_btn); vh.addWidget(self.full_btn); vl_.addLayout(vh)
+        self.vholder = QVBoxLayout(); self.vholder.addWidget(self.video, 1); vl_.addLayout(self.vholder, 1)
+        right.addWidget(vc, 1)
+        oc = QFrame(); oc.setObjectName("card"); ol = QVBoxLayout(oc); ol.setContentsMargins(16, 14, 16, 14); ol.setSpacing(12)
+        ot = QLabel("SORTIE VIDÉO · CHOISIR L'ÉCRAN"); ot.setObjectName("section"); ol.addWidget(ot)
+        self.screens_row = QHBoxLayout(); self.screens_row.setSpacing(12); ol.addLayout(self.screens_row)
+        self.opt_auto = QCheckBox("Plein écran automatique à la lecture d'une vidéo"); self.opt_top = QCheckBox("Toujours au premier plan"); self.opt_cur = QCheckBox("Masquer le curseur")
+        orow = QHBoxLayout(); orow.setSpacing(24)
+        for cb, key in ((self.opt_auto, "auto"), (self.opt_top, "on_top"), (self.opt_cur, "hide_cursor")):
+            cb.setChecked(bool(v[key])); cb.toggled.connect(lambda on, k=key: v.__setitem__(k, bool(on))); orow.addWidget(cb)
+        orow.addStretch(1); ol.addLayout(orow)
+        brow = QHBoxLayout(); brow.addStretch(1)
+        self.back_btn = QPushButton("Rapatrier la vidéo"); self.send_btn = QPushButton("Envoyer en plein écran"); self.send_btn.setObjectName("primary")
+        brow.addWidget(self.back_btn); brow.addWidget(self.send_btn); ol.addLayout(brow)
+        right.addWidget(oc)
+        root.addLayout(right, 6)
+        self._screen_cards: list[_ScreenCard] = []
+        self._rebuild_screens()
+        QGuiApplication.instance().screenAdded.connect(lambda *_: self._rebuild_screens())
+        QGuiApplication.instance().screenRemoved.connect(lambda *_: self._rebuild_screens())
 
         self.add_btn.clicked.connect(self._add_dialog); self.rm_btn.clicked.connect(self._remove)
         self.up_btn.clicked.connect(lambda: self._move(-1)); self.dn_btn.clicked.connect(lambda: self._move(1))
@@ -101,7 +148,10 @@ class MediaPanel(QWidget):
         self.next_btn.clicked.connect(self.next); self.prev_btn.clicked.connect(self.prev)
         self.vol.valueChanged.connect(lambda _v: self._apply_volume())
         self.seek.valueChanged.connect(self._seek_to)
-        self.detach_btn.toggled.connect(self._detach)
+        self.win_btn.clicked.connect(lambda: self.send_to_screen(fullscreen=False))
+        self.full_btn.clicked.connect(lambda: self.send_to_screen(fullscreen=True))
+        self.send_btn.clicked.connect(lambda: self.send_to_screen(fullscreen=True))
+        self.back_btn.clicked.connect(self.bring_back)
         # Connexions DIFFÉRÉES : le backend FFmpeg émet ses signaux depuis setSource()/play() ; y faire du travail d'interface
         # (ou relancer une lecture) en direct peut le bloquer.
         q = Qt.QueuedConnection
@@ -240,6 +290,9 @@ class MediaPanel(QWidget):
         self._apply_volume(); self.player.play()
         self.table.selectRow(i)
         self.ctl.log("info", f"Lecture : {it.get('title')}")
+        self.now.setText(f"· {it.get('title', '')}")
+        if it.get('video') and self.ctl.settings.data['video'].get('auto') and self.out_win is None:
+            self.send_to_screen(fullscreen=True)
         self._start_light(it)
 
     def toggle_play(self):
@@ -272,7 +325,7 @@ class MediaPanel(QWidget):
             else: self._stop_light()
 
     def _on_state(self, st):
-        self.play_btn.setText("⏸" if st == QMediaPlayer.PlayingState else "▶")
+        self.play_btn.setIcon(icon("pause" if st == QMediaPlayer.PlayingState else "play", T.BG, 18))
         for r in range(self.table.rowCount()):
             if self.table.item(r, 0):
                 self.table.item(r, 0).setText("▶" if r == self.current and st == QMediaPlayer.PlayingState else ("⏸" if r == self.current and st == QMediaPlayer.PausedState else ""))
@@ -315,17 +368,52 @@ class MediaPanel(QWidget):
             self.ctl.stateChanged.emit()
 
     # ------------------------------------------------------------------ vidéo
-    def _detach(self, on):
-        if on:
-            self._detached = VideoWindow(); lay = QVBoxLayout(self._detached); lay.setContentsMargins(0, 0, 0, 0)
-            lay.addWidget(self.video); self._detached.closed.connect(lambda: self.detach_btn.setChecked(False)); self._detached.show()
-        elif self._detached:
-            self.vholder.addWidget(self.video); self.video.show()
-            w, self._detached = self._detached, None; w.closed.disconnect(); w.close()
+    def _rebuild_screens(self):
+        while self.screens_row.count():
+            w = self.screens_row.takeAt(0).widget()
+            if w: w.deleteLater()
+        self._screen_cards = []
+        cur = min(int(self.ctl.settings.data["video"]["screen"]), max(0, len(all_screens()) - 1))
+        for i, sc in enumerate(all_screens()):
+            c = _ScreenCard(i, sc); c.setChecked(i == cur); c.clicked.connect(lambda _=False, i=i: self.choose_screen(i))
+            self.screens_row.addWidget(c); self._screen_cards.append(c)
+        self.screens_row.addStretch(1)
+        if hasattr(self, "send_btn"):
+            self.send_btn.setText(f"Envoyer en plein écran sur l'écran {cur + 1}")
+
+    def choose_screen(self, idx: int):
+        self.ctl.settings.data["video"]["screen"] = idx
+        for c in self._screen_cards:
+            c.setChecked(c.idx == idx)
+        self.send_btn.setText(f"Envoyer en plein écran sur l'écran {idx + 1}")
+        if self.out_win is not None:                       # sortie déjà ouverte : on la déplace
+            self.send_to_screen(fullscreen=self.out_win.isFullScreen())
+
+    def send_to_screen(self, idx: int | None = None, fullscreen: bool = True):
+        """Sort la vidéo dans sa propre fenêtre, en plein écran (ou non) sur l'écran choisi."""
+        v = self.ctl.settings.data["video"]
+        idx = int(v["screen"]) if idx is None else idx
+        if self.out_win is None:
+            self.out_win = VideoOutput(self.video, bool(v["on_top"]), bool(v["hide_cursor"]))
+            self.out_win.closed.connect(self._on_output_closed)
+            self.video.show()
+        place_on_screen(self.out_win, screen_by_index(idx), fullscreen)
+        self.ctl.log("info", f"Vidéo : {'plein écran' if fullscreen else 'fenêtre'} sur l'écran {idx + 1}")
+
+    def bring_back(self):
+        if self.out_win is not None:
+            self.out_win.close()
+
+    def _on_output_closed(self):
+        w, self.out_win = self.out_win, None
+        if w is not None:
+            w.closed.disconnect()
+            self.vholder.addWidget(self.video, 1); self.video.setCursor(Qt.ArrowCursor); self.video.show()
+            w.deleteLater()
 
     def shutdown(self):
         self.stop(); self.probe.stop()
         self._probe_queue.clear(); self._probe_timer.stop()
         for pl in (self.player, self.probe):          # libère les fichiers et arrête les threads du backend
             pl.setSource(QUrl())
-        if self._detached: self._detach(False)
+        self.bring_back()

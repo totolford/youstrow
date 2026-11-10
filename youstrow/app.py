@@ -30,6 +30,10 @@ def build_app(argv=None) -> QApplication:
     """Crée (ou récupère) la QApplication et applique le thème UNE seule fois : ré-appliquer icône/style/feuille de style
     à des fenêtres existantes (avec vidéo) peut bloquer."""
     global _configured
+    if QApplication.instance() is None:
+        # QtWebEngine (plan 3D) : contextes OpenGL partagés + liste noire GPU assouplie (WebGL sur les pilotes courants)
+        os.environ.setdefault("QTWEBENGINE_CHROMIUM_FLAGS", "--ignore-gpu-blocklist --enable-gpu-rasterization")
+        QApplication.setAttribute(Qt.AA_ShareOpenGLContexts)
     app = QApplication.instance() or QApplication(argv or sys.argv)
     if _configured:
         return app
@@ -57,7 +61,22 @@ def main(argv=None) -> int:
         win.restoreGeometry(QByteArray.fromBase64(geo.encode()))
     win.show()
     ctl.start()
-    args = [a for a in (argv or sys.argv)[1:] if a.lower().endswith('.ysshow')]
+    av = list(argv or sys.argv)
+    if "--workspace" in av and av.index("--workspace") + 1 < len(av):
+        win.goto(av[av.index("--workspace") + 1])
+    if "--selftest" in av:                       # vérification automatisée de l'exécutable (3D, sorties) — écrit un rapport et quitte
+        from PySide6.QtCore import QTimer
+
+        def report():
+            import tempfile
+            v = getattr(win.p3d, "view", None)
+            lines = [f"webengine={'oui' if v is not None else 'non'}", f"3d_ready={bool(v and v.ready)}",
+                     f"screens={len(app.screens())}", f"output={ctl.output.status.state if ctl.output else 'aucune'}"]
+            Path(tempfile.gettempdir(), "youstrow_selftest.txt").write_text(chr(10).join(lines), encoding="utf-8")
+            ctl.dirty = False
+            os._exit(0)
+        QTimer.singleShot(14000, report)
+    args = [a for a in av[1:] if a.lower().endswith('.ysshow')]
     if args:                                   # double-clic sur un show (association de fichier)
         win._open_path(args[0])
     app.aboutToQuit.connect(ctl.shutdown)
