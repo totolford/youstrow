@@ -10,8 +10,3 @@ build_console/
 .idea/
 .vscode/
 *.tmp
-
-# Fichiers 3D issus de l'application d'origine (œuvre de l'auteur d'origine) : non versionnés tant que leur
-# publication n'est pas confirmée. Les bibliothèques Three.js (MIT) dans resources/web3d/vendor sont, elles, versionnées.
-youstrow/resources/web3d/index.html
-youstrow/resources/web3d/scenes3d/
