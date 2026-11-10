@@ -12,6 +12,7 @@ if [ ! -d .venv ]; then
   .venv/bin/python -m pip install -U pip
   .venv/bin/python -m pip install -r requirements.txt pyinstaller
 fi
+[ "$(id -u)" = 0 ] && export QTWEBENGINE_DISABLE_SANDBOX=1 QTWEBENGINE_CHROMIUM_FLAGS="--no-sandbox --disable-gpu"   # Chromium refuse de tourner en root sans ça
 if [ "$SKIP_TESTS" = 0 ]; then QT_QPA_PLATFORM=offscreen .venv/bin/python -m pytest tests -q; fi
 .venv/bin/python -m PyInstaller youstrow.spec --noconfirm --clean
 echo "OK -> dist/YouStrow/YouStrow"

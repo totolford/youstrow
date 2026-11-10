@@ -16,7 +16,7 @@ Les réglages sont dans `%APPDATA%\YouStrow\` et conservés à la désinstallati
 ## Installer sur Ubuntu / Debian
 ```bash
 ./build.sh                                   # tests + dist/YouStrow/ + dist/youstrow_X.Y.Z_amd64.deb
-sudo apt install ./dist/youstrow_0.2.0_amd64.deb
+sudo apt install ./dist/youstrow_X.Y.Z_amd64.deb
 ```
 ou, sans paquet, directement depuis les sources : `./install.sh` (dépendances apt, venv, règle udev, lanceur de menu).
 Réglages dans `~/.config/YouStrow/`. Un `.deb` installe aussi la règle udev (accès à l'Open DMX sans root) et l'association des `.ysshow`.
