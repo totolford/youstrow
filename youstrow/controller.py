@@ -19,7 +19,7 @@ from .storage.files import Settings, load_show, save_show
 OUTPUT_TYPES = {
     "none": "Aucune (simulation)",
     "open_dmx_d2xx": "ENTTEC Open DMX USB (D2XX, recommandé)",
-    "open_dmx_com": "Open DMX / clone via port COM",
+    "open_dmx_com": "Open DMX / clone via port série (COM / ttyUSB)",
     "enttec_pro": "ENTTEC DMX USB PRO",
     "artnet": "Art-Net (réseau)",
 }

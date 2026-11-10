@@ -1,11 +1,12 @@
 """Persistance : réglages utilisateur et fichiers de show (JSON, écriture atomique).
 
-Les données vont dans %APPDATA%/YouStrow — volontairement séparé des fichiers ~/.youstrow_*.json de
+Les données vont dans %APPDATA%/YouStrow (Windows) ou ~/.config/YouStrow (Linux) — volontairement séparé des fichiers ~/.youstrow_*.json de
 l'application d'origine, pour ne jamais les écraser."""
 from __future__ import annotations
 
 import json
 import os
+import sys
 import tempfile
 from pathlib import Path
 
@@ -14,7 +15,10 @@ SHOW_EXT = ".ysshow"
 
 
 def data_dir() -> Path:
-    base = os.environ.get("APPDATA") or str(Path.home() / ".config")
+    if sys.platform == "win32":
+        base = os.environ.get("APPDATA") or str(Path.home() / "AppData" / "Roaming")
+    else:                                   # Linux : XDG_CONFIG_HOME, sinon ~/.config
+        base = os.environ.get("XDG_CONFIG_HOME") or str(Path.home() / ".config")
     p = Path(base) / "YouStrow"
     p.mkdir(parents=True, exist_ok=True)
     return p

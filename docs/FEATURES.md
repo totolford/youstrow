@@ -23,6 +23,7 @@ Légende : ✅ fait et testé (sans matériel) · 🟡 fait, à valider avec du 
 | Plan de feu 2D live, testeur DMX, moniteur DMX, effets par couches, shows `.ysshow` | ✅ | |
 | Interface redessinée depuis Figma (rail, barre supérieure, 6 espaces de travail) | ✅ | voir docs/FIGMA.md |
 | Exécutable Windows + installeur | ✅ | |
+| Version Ubuntu/Linux (PyInstaller + .deb, udev, MIME) | ✅/🟡 | `./build.sh` ; Open DMX réel non testé (ttyUSB recommandé, D2XX nécessite de décharger `ftdi_sio`) |
 | Timeline lumière / REC lumière / séquenceur LIVE / cue list | ⬜ | gros modules de l'original |
 | Pixel map, fixtures à pixels, éditeur de fixtures, import QLC+/GrandMA | ⬜ | |
 | IA Lumière, assistant vocal | ⬜ | exclus pour l'instant |

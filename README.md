@@ -1,6 +1,6 @@
 # YouStrow
 
-Contrôleur lumière DMX pour Windows : sortie **ENTTEC Open DMX USB**, lecteur audio/vidéo, contrôle **MIDI** (AKAI APC mini), plan de feu live.
+Contrôleur lumière DMX pour **Windows et Ubuntu/Linux** : sortie **ENTTEC Open DMX USB**, lecteur audio/vidéo, contrôle **MIDI** (AKAI APC mini), plan de feu live.
 Python 3.12 + PySide6 (Qt 6). Le moteur DMX est indépendant de l'interface.
 
 ![YouStrow](docs/img/media.png)
@@ -12,6 +12,19 @@ Python 3.12 + PySide6 (Qt 6). Le moteur DMX est indépendant de l'interface.
 ## Installer
 Téléchargez `YouStrow-Setup-x.y.z.exe` depuis les [Releases](../../releases) et lancez-le (pas besoin d'être administrateur).
 Les réglages sont dans `%APPDATA%\YouStrow\` et conservés à la désinstallation.
+
+## Installer sur Ubuntu / Debian
+```bash
+./build.sh                                   # tests + dist/YouStrow/ + dist/youstrow_X.Y.Z_amd64.deb
+sudo apt install ./dist/youstrow_0.2.0_amd64.deb
+```
+ou, sans paquet, directement depuis les sources : `./install.sh` (dépendances apt, venv, règle udev, lanceur de menu).
+Réglages dans `~/.config/YouStrow/`. Un `.deb` installe aussi la règle udev (accès à l'Open DMX sans root) et l'association des `.ysshow`.
+
+**Open DMX sous Linux** : le noyau charge `ftdi_sio`, qui empêche D2XX d'ouvrir la puce. Le plus simple : sortie
+*Open DMX / clone via port série (COM / ttyUSB)* → `/dev/ttyUSB0` (ajouter l'utilisateur au groupe `dialout`, puis se reconnecter).
+Pour le mode D2XX : installer `libftd2xx.so` (ftdichip.com) et `sudo rmmod ftdi_sio usbserial`. Art-Net et DMX USB PRO fonctionnent tels quels.
+Non testé avec du matériel réel, comme la version Windows.
 
 ## Fonctions (voir aussi docs/FEATURES.md et docs/FIGMA.md)
 - **Sorties DMX** : ENTTEC Open DMX USB (pilote D2XX, ou port COM pour les clones), ENTTEC DMX USB PRO, Art-Net (avec recherche de nodes). Assistant de connexion + diagnostic, test 100 %.
@@ -25,6 +38,13 @@ Les réglages sont dans `%APPDATA%\YouStrow\` et conservés à la désinstallati
 État détaillé : [docs/FEATURES.md](docs/FEATURES.md). Pas encore : timeline lumière, plan 3D, éditeur de fixtures, IA (volontairement exclue pour l'instant).
 
 ## Développer
+Ubuntu :
+```bash
+python3 -m venv .venv && .venv/bin/pip install -r requirements.txt   # apt : libasound2-dev (python-rtmidi)
+.venv/bin/python -m youstrow
+QT_QPA_PLATFORM=offscreen .venv/bin/python -m pytest tests -q
+```
+Windows :
 ```powershell
 py -3.12 -m venv .venv; .\.venv\Scripts\python.exe -m pip install -r requirements.txt pyinstaller
 .\.venv\Scripts\python.exe -m youstrow          # lancer depuis les sources

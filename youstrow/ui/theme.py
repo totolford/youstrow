@@ -42,7 +42,7 @@ def qc(hexcolor: str, alpha: int = 255) -> QColor:
 
 def app_font(size: int = 10) -> QFont:
     fams = QFontDatabase.families()
-    for name in ("Inter", "Segoe UI Variable Text", "Segoe UI Variable", "Segoe UI", "Arial"):
+    for name in ("Inter", "Segoe UI Variable Text", "Segoe UI Variable", "Segoe UI", "Ubuntu", "Noto Sans", "DejaVu Sans", "Arial"):
         if name in fams:
             f = QFont(name, size)
             f.setStyleStrategy(QFont.PreferAntialias)
@@ -110,7 +110,7 @@ QScrollBar::handle:horizontal {{ background: #2b313d; border-radius: 4px; min-wi
 QScrollBar::add-line, QScrollBar::sub-line {{ width: 0; height: 0; }}
 QScrollArea {{ border: none; background: transparent; }}
 QPlainTextEdit, QTextEdit {{ background: {PANEL}; border: 1px solid {BORDER}; border-radius: {R_MD}px; padding: 6px;
-    font-family: 'Cascadia Mono', Consolas, monospace; font-size: 11px; }}
+    font-family: 'Cascadia Mono', Consolas, 'Ubuntu Mono', 'DejaVu Sans Mono', monospace; font-size: 11px; }}
 QToolTip {{ background: {RAISED}; color: {TEXT}; border: 1px solid {BORDER_HI}; padding: 6px; border-radius: 6px; }}
 QCheckBox {{ spacing: 8px; }}
 QCheckBox::indicator {{ width: 18px; height: 18px; border-radius: 5px; border: 1px solid {BORDER_HI}; background: {RAISED}; }}

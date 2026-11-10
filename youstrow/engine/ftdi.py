@@ -60,6 +60,18 @@ def _candidate_dlls() -> list[str]:
     return out + names  # puis chemin système (driver FTDI installé)
 
 
+def _candidate_so() -> list[str]:
+    """libftd2xx.so : à côté de l'application (paquet), dans vendor/linux, /usr/local/lib (installation FTDI), puis système."""
+    here = Path(__file__).resolve()
+    roots = [Path(getattr(sys, "_MEIPASS", "")) if hasattr(sys, "_MEIPASS") else None,
+             Path(sys.executable).parent, here.parents[2] / "vendor" / "linux", Path("/usr/local/lib"), Path("/usr/lib")]
+    found: list[str] = []
+    for r in roots:
+        if r and r.is_dir():
+            found += [str(p) for p in sorted(r.glob("libftd2xx.so*"))]
+    return found + ["libftd2xx.so", "libftd2xx.so.1"]
+
+
 def load_library():
     """Retourne la DLL D2XX ou lève FtdiError si introuvable."""
     global _lib
@@ -67,8 +79,7 @@ def load_library():
         if _lib is not None:
             return _lib
         if os.name != "nt":
-            names = ["libftd2xx.so", "libftd2xx.dylib"]
-            loader = ctypes.CDLL
+            names, loader = _candidate_so(), ctypes.CDLL
         else:
             names, loader = _candidate_dlls(), ctypes.WinDLL
         last = None
@@ -79,7 +90,10 @@ def load_library():
             except OSError as e:
                 last = e
         if _lib is None:
-            raise FtdiError(f"Driver FTDI D2XX introuvable ({last})")
+            hint = ""
+            if os.name != "nt":
+                hint = " — sous Linux : installer libftd2xx.so (ftdichip.com) ou utiliser le mode « port série » (/dev/ttyUSB0)"
+            raise FtdiError(f"Driver FTDI D2XX introuvable ({last}){hint}")
         _declare(_lib)
         return _lib
 

@@ -1,6 +1,8 @@
 """Assistant « Sortie DMX » : détecter, choisir, connecter, diagnostiquer, tester."""
 from __future__ import annotations
 
+import sys
+
 from PySide6.QtCore import QThread, QTimer, Signal, Qt
 from PySide6.QtWidgets import (QComboBox, QDialog, QFormLayout, QHBoxLayout, QLabel, QLineEdit, QMessageBox, QPlainTextEdit,
                                QPushButton, QSpinBox, QStackedWidget, QVBoxLayout, QWidget)
@@ -129,7 +131,7 @@ class OutputDialog(QDialog):
             for dev, desc, ser in hw["com"]:
                 combo.addItem(f"{dev}  ·  {desc}", dev)
             if not hw["com"]:
-                combo.addItem("Aucun port COM", "")
+                combo.addItem("Aucun port série" if sys.platform != "win32" else "Aucun port COM", "")
             i = combo.findData(self.ctl.settings.data["output"].get(key, ""))
             if i >= 0: combo.setCurrentIndex(i)
         i = self.ftdi.findData(cur_ser)
@@ -138,10 +140,16 @@ class OutputDialog(QDialog):
                  f"Puces FTDI détectées : {len(hw['ftdi'])}"]
         for d in hw["ftdi"]:
             lines.append(f"   • {d.description} — n° série {d.serial}" + (" — DÉJÀ OUVERTE (autre logiciel ?)" if d.in_use else ""))
-        lines.append(f"Ports COM : {', '.join(p[0] + ' (' + p[1] + ')' for p in hw['com']) or 'aucun'}")
+        lines.append(f"Ports série : {', '.join(p[0] + ' (' + p[1] + ')' for p in hw['com']) or 'aucun'}")
         if not hw["ftdi"]:
-            lines += ["", "Pas d'Open DMX détecté. Vérifiez : câble USB, driver FTDI « CDM » installé (Gestionnaire de",
-                      "périphériques), et qu'aucun autre logiciel DMX (QLC+, une autre instance de YouStrow…) n'utilise la puce."]
+            if sys.platform == "win32":
+                lines += ["", "Pas d'Open DMX détecté. Vérifiez : câble USB, driver FTDI « CDM » installé (Gestionnaire de",
+                          "périphériques), et qu'aucun autre logiciel DMX (QLC+, une autre instance de YouStrow…) n'utilise la puce."]
+            else:
+                lines += ["", "Pas d'Open DMX détecté en D2XX. Sous Linux : (1) règle udev installée (youstrow-udev.rules) et session",
+                          "rouverte / câble rebranché ; (2) D2XX exige de décharger le module noyau ftdi_sio (sudo rmmod ftdi_sio usbserial)",
+                          "ou, plus simple, choisir « Open DMX via port série » et le port /dev/ttyUSBx ; (3) groupe « dialout » pour l'accès série ;",
+                          "(4) aucun autre logiciel DMX n'utilise la puce."]
         self.diag.setPlainText("\n".join(lines))
 
     def _find_nodes(self):

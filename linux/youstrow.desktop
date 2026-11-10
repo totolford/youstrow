@@ -1,0 +1,11 @@
+[Desktop Entry]
+Type=Application
+Name=YouStrow
+GenericName=Contrôleur lumière DMX
+Comment=Contrôleur lumière DMX : Open DMX USB, Art-Net, MIDI, lecteur média
+Exec=youstrow %f
+Icon=youstrow
+Terminal=false
+Categories=AudioVideo;Audio;Video;
+MimeType=application/x-youstrow-show;
+StartupWMClass=YouStrow
